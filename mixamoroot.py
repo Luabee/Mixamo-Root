@@ -39,8 +39,10 @@ def fixBones():
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.context.object.show_in_front = True
 
-def renameBones(name_prefix, name_prefix_fallback):
-    for rig in bpy.context.selected_objects:
+def renameBones(name_prefix, name_prefix_fallback, rename_actions=True, targets = []):
+    if targets == []:
+        targets = bpy.context.selected_objects
+    for rig in targets:
         if rig.type == 'ARMATURE':
             for mesh in rig.children:
                 for vg in mesh.vertex_groups:
@@ -50,10 +52,11 @@ def renameBones(name_prefix, name_prefix_fallback):
                     vg.name = new_name
             for bone in rig.pose.bones:
                 bone.name = bone.name.replace(name_prefix,"").replace(name_prefix_fallback,"")
-    for action in bpy.data.actions:
-        fc = action.fcurves
-        for f in fc:
-            f.data_path = f.data_path.replace(name_prefix,"").replace(name_prefix_fallback,"")
+    if rename_actions:
+        for action in bpy.data.actions:
+            fc = action.fcurves
+            for f in fc:
+                f.data_path = f.data_path.replace(name_prefix,"").replace(name_prefix_fallback,"")
         
 def scaleAll():
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -348,11 +351,12 @@ def import_armature(filepath, root_bone_name, hip_bone_name, hip_bone_name_fallb
     imported_actions[0].name = Path(filepath).resolve().stem # Only reads the first animation associated with an imported armature
     
     if insert_root:
-        add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback)
+        armature = bpy.context.selected_objects[0]
+        add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback, armature)
     
     
-def add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback):
-    armature = bpy.context.selected_objects[0]
+def add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback, armature):
+    armature.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT')
 
     root_bone = None
@@ -370,7 +374,7 @@ def add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_
 
     fixBones()
     if remove_prefix:
-        renameBones(name_prefix=name_prefix, name_prefix_fallback=name_prefix_fallback)
+        renameBones(name_prefix=name_prefix, name_prefix_fallback=name_prefix_fallback, rename_actions=True)
     scaleAll()
     copyHips(remove_prefix=remove_prefix, root_bone_name=root_bone_name, hip_bone_name=hip_bone_name, hip_bone_name_fallback=hip_bone_name_fallback, name_prefix=name_prefix, name_prefix_fallback=name_prefix_fallback)
 
