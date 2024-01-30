@@ -23,36 +23,37 @@
 import bpy
 import os
 import logging
+import traceback
 from pathlib import Path
 
 
 log = logging.getLogger(__name__)
 
 # in future remove_prefix should be renamed to rename prefix and a target prefix should be specifiable via ui
-def fixBones(remove_prefix=False, name_prefix="mixamorig:"):
+def fixBones():
     bpy.ops.object.mode_set(mode = 'OBJECT')
         
     if not bpy.ops.object:
-        log.warning('[Mixamo Root] Could not find amature object, please select the armature')
+        log.warning('[Mixamo Root] Could not find armature object, please select the armature')
 
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.context.object.show_in_front = True
 
-    if remove_prefix:
-        for rig in bpy.context.selected_objects:
-            if rig.type == 'ARMATURE':
-                for mesh in rig.children:
-                    for vg in mesh.vertex_groups:
-                        new_name = vg.name
-                        new_name = new_name.replace(name_prefix,"")
-                        rig.pose.bones[vg.name].name = new_name
-                        vg.name = new_name
-                for bone in rig.pose.bones:
-                    bone.name = bone.name.replace(name_prefix,"")
-        for action in bpy.data.actions:
-            fc = action.fcurves
-            for f in fc:
-                f.data_path = f.data_path.replace(name_prefix,"")
+def renameBones(name_prefix, name_prefix_fallback):
+    for rig in bpy.context.selected_objects:
+        if rig.type == 'ARMATURE':
+            for mesh in rig.children:
+                for vg in mesh.vertex_groups:
+                    new_name = vg.name
+                    new_name = new_name.replace(name_prefix,"").replace(name_prefix_fallback,"")
+                    rig.pose.bones[vg.name].name = new_name
+                    vg.name = new_name
+            for bone in rig.pose.bones:
+                bone.name = bone.name.replace(name_prefix,"").replace(name_prefix_fallback,"")
+    for action in bpy.data.actions:
+        fc = action.fcurves
+        for f in fc:
+            f.data_path = f.data_path.replace(name_prefix,"").replace(name_prefix_fallback,"")
         
 def scaleAll():
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -79,18 +80,30 @@ def scaleAll():
     use_proportional_projected=False)
 
 
-def copyHips(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix="mixamorig:"):
+def copyHips(remove_prefix, root_bone_name, hip_bone_name, hip_bone_name_fallback, name_prefix, name_prefix_fallback):
+    if remove_prefix:
+        hip_bone_name = hip_bone_name.replace(name_prefix, "")
+        hip_bone_name_fallback = hip_bone_name_fallback.replace(name_prefix_fallback, "")
+        name_prefix = ""
+        name_prefix_fallback = ""
     bpy.context.area.ui_type = 'FCURVES'
     #SELECT OUR ROOT MOTION BONE 
     bpy.ops.pose.select_all(action='DESELECT')
-    bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+    # print([n for n in bpy.context.object.pose.bones.keys()])
+    if (name_prefix + root_bone_name) in bpy.context.object.pose.bones:
+        bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+    else:
+        bpy.context.object.pose.bones[name_prefix_fallback + root_bone_name].bone.select = True
     # SET FRAME TO ZERO
     bpy.ops.graph.cursor_set(frame=0.0, value=0.0)
     #ADD NEW KEYFRAME
     bpy.ops.anim.keyframe_insert_menu(type='Location')
     #SELECT ONLY HIPS AND LOCTAIUON GRAPH DATA
     bpy.ops.pose.select_all(action='DESELECT')
-    bpy.context.object.pose.bones[hip_bone_name].bone.select = True        
+    if hip_bone_name in bpy.context.object.pose.bones:
+        bpy.context.object.pose.bones[hip_bone_name].bone.select = True
+    else:
+        bpy.context.object.pose.bones[hip_bone_name_fallback].bone.select = True
     bpy.context.area.ui_type = 'DOPESHEET'
     bpy.context.space_data.dopesheet.filter_text = "Location"
     bpy.context.area.ui_type = 'FCURVES'
@@ -101,13 +114,19 @@ def copyHips(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix=
     myFcurves = bpy.context.object.animation_data.action.fcurves
         
     for i in myFcurves:
-        hip_bone_fcvurve = 'pose.bones["'+hip_bone_name+'"].location'
+        if hip_bone_name in bpy.context.object.pose.bones:
+            hip_bone_fcvurve = 'pose.bones["'+hip_bone_name+'"].location'
+        else:
+            hip_bone_fcvurve = 'pose.bones["'+hip_bone_name_fallback+'"].location'
         if str(i.data_path)==hip_bone_fcvurve:
             if i.array_index != 1:
                 myFcurves.remove(i)
                 
     bpy.ops.pose.select_all(action='DESELECT')
-    bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+    if (name_prefix + root_bone_name) in bpy.context.object.pose.bones:
+        bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+    else:
+        bpy.context.object.pose.bones[name_prefix_fallback + root_bone_name].bone.select = True
     bpy.ops.graph.paste()        
 
     # Get the animation data and action
@@ -115,7 +134,11 @@ def copyHips(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix=
     action = anim_data.action if anim_data else None
 
     # Get the fcurves for the root bone's location
-    fcurves = [fcurve for fcurve in action.fcurves if fcurve.data_path == 'pose.bones["{}"].location'.format(name_prefix + root_bone_name) and fcurve.array_index in range(3)]
+    fcurves = []
+    if (name_prefix + root_bone_name) in bpy.context.object.pose.bones:
+        fcurves = [fcurve for fcurve in action.fcurves if fcurve.data_path == 'pose.bones["{}"].location'.format(name_prefix + root_bone_name) and fcurve.array_index in range(3)]
+    else:
+        fcurves = [fcurve for fcurve in action.fcurves if fcurve.data_path == 'pose.bones["{}"].location'.format(name_prefix_fallback + root_bone_name) and fcurve.array_index in range(3)]
     for i in fcurves:
         print(i.data_path)
 
@@ -128,7 +151,11 @@ def copyHips(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix=
     
     anim_data = bpy.context.object.animation_data
     action = anim_data.action if anim_data else None
-    hips_fcurves = [hips_fcurve for hips_fcurve in action.fcurves if hips_fcurve.data_path == 'pose.bones["{}"].location'.format(hip_bone_name) and hips_fcurve.array_index in range(3)]
+    hips_fcurves = []
+    if hip_bone_name in bpy.context.object.pose.bones:
+        hips_fcurves = [hips_fcurve for hips_fcurve in action.fcurves if hips_fcurve.data_path == 'pose.bones["{}"].location'.format(hip_bone_name) and hips_fcurve.array_index in range(3)]
+    else:
+        hips_fcurves = [hips_fcurve for hips_fcurve in action.fcurves if hips_fcurve.data_path == 'pose.bones["{}"].location'.format(hip_bone_name_fallback) and hips_fcurve.array_index in range(3)]
     for keyframe in hips_fcurves[0].keyframe_points:
         if keyframe.co.y > 0:
             keyframe.co.y = 0
@@ -137,11 +164,11 @@ def copyHips(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix=
     bpy.context.area.ui_type = 'VIEW_3D'
     bpy.ops.object.mode_set(mode='OBJECT')
 
-def fix_bones_nla(remove_prefix=False, name_prefix="mixamorig:"):
+def fix_bones_nla(remove_prefix, name_prefix, name_prefix_fallback):
     bpy.ops.object.mode_set(mode = 'OBJECT')
         
     if not bpy.ops.object:
-        log.warning('[Mixamo Root] Could not find amature object, please select the armature')
+        log.warning('[Mixamo Root] Could not find armature object, please select the armature')
 
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.context.object.show_in_front = True
@@ -177,7 +204,7 @@ def scale_all_nla(armature):
     use_proportional_connected=False,
     use_proportional_projected=False)
 
-def copy_hips_nla(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix="mixamorig:"):
+def copy_hips_nla(root_bone_name, hip_bone_name, hip_bone_name_fallback, name_prefix, name_prefix_fallback):
     hip_bone_name="Ctrl_Hips"
     bpy.ops.object.mode_set(mode='POSE')
     previous_context = bpy.context.area.ui_type
@@ -221,11 +248,18 @@ def copy_hips_nla(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_pr
     for track in bpy.context.object.animation_data.nla_tracks:
         bpy.context.object.animation_data.nla_tracks.active = track
         for strip in track.strips:
-            bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+            if (name_prefix + root_bone_name) in bpy.context.object.pose.bones:
+                bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+            else:
+                bpy.context.object.pose.bones[name_prefix_fallback + root_bone_name].bone.select = True
             bpy.context.area.ui_type = 'NLA_EDITOR'
             bpy.ops.nla.tweakmode_enter()
             bpy.context.area.ui_type = 'FCURVES'
-            hip_curves = [fc for fc in strip.fcurves if hip_bone_name in fc.data_path and fc.data_path.startswith('location')]
+            hip_curves = []
+            if hip_bone_name in bpy.context.object.pose.bones:
+                hip_curves = [fc for fc in strip.fcurves if hip_bone_name in fc.data_path and fc.data_path.startswith('location')]
+            else:
+                hip_curves = [fc for fc in strip.fcurves if hip_bone_name_fallback in fc.data_path and fc.data_path.startswith('location')]
             
             # Copy Hips to root
             ## Insert keyframe for root bone
@@ -236,7 +270,10 @@ def copy_hips_nla(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_pr
             bpy.ops.pose.select_all(action='DESELECT')
 
             ## Copy Location fcruves
-            bpy.context.object.pose.bones[hip_bone_name].bone.select = True        
+            if hip_bone_name in bpy.context.object.pose.bones:
+                bpy.context.object.pose.bones[hip_bone_name].bone.select = True
+            else:
+                bpy.context.object.pose.bones[hip_bone_name_fallback].bone.select = True
             bpy.context.area.ui_type = 'DOPESHEET'
             bpy.context.space_data.dopesheet.filter_text = "Location"
             bpy.context.area.ui_type = 'FCURVES'
@@ -250,7 +287,10 @@ def copy_hips_nla(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_pr
 
             ## Paste location fcurves to the root bone
             bpy.ops.pose.select_all(action='DESELECT')
-            bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+            if (name_prefix + root_bone_name) in bpy.context.object.pose.bones:
+                bpy.context.object.pose.bones[name_prefix + root_bone_name].bone.select = True
+            else:
+                bpy.context.object.pose.bones[name_prefix_fallback + root_bone_name].bone.select = True
             bpy.ops.graph.paste()
 
 
@@ -292,8 +332,10 @@ def deleteArmature(imported_objects=set()):
     if bpy.context.selected_objects:
         bpy.context.view_layer.objects.active = armature
 
-def import_armature(filepath, root_bone_name="Root", hip_bone_name="mixamorig:Hips", remove_prefix=False, name_prefix="mixamorig:",  insert_root=False, delete_armatures=False):
+def import_armature(filepath, root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback, insert_root=False, delete_armatures=False):
     old_objs = set(bpy.context.scene.objects)
+    print("[Mixamo Root] Now importing: " + str(filepath))
+    # Import files
     if insert_root:
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
         bpy.ops.import_scene.fbx(filepath = filepath)#,  automatic_bone_orientation=True)
@@ -302,48 +344,63 @@ def import_armature(filepath, root_bone_name="Root", hip_bone_name="mixamorig:Hi
     
     imported_objects = set(bpy.context.scene.objects) - old_objs
     imported_actions = [x.animation_data.action for x in imported_objects if x.animation_data]
-    print("[Mixamo Root] Now importing: " + str(filepath))
+    print("[Mixamo Root] Imported: " + str(filepath))
     imported_actions[0].name = Path(filepath).resolve().stem # Only reads the first animation associated with an imported armature
     
     if insert_root:
-        add_root_bone(root_bone_name, hip_bone_name, remove_prefix, name_prefix)
+        add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback)
     
     
-def add_root_bone(root_bone_name="Root", hip_bone_name="mixamorig:Hips", remove_prefix=False, name_prefix="mixamorig:"):
+def add_root_bone(root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback):
     armature = bpy.context.selected_objects[0]
     bpy.ops.object.mode_set(mode='EDIT')
 
-    root_bone = armature.data.edit_bones.new(name_prefix + root_bone_name)
+    root_bone = None
+    if hip_bone_name in bpy.context.object.pose.bones:
+        root_bone = armature.data.edit_bones.new(name_prefix + root_bone_name)
+    else:
+        root_bone = armature.data.edit_bones.new(name_prefix_fallback + root_bone_name)
     root_bone.tail.y = 30
 
-    armature.data.edit_bones[hip_bone_name].parent = armature.data.edit_bones[name_prefix + root_bone_name]
+    if hip_bone_name in bpy.context.object.pose.bones:
+        armature.data.edit_bones[hip_bone_name].parent = armature.data.edit_bones[name_prefix + root_bone_name]
+    else:
+        armature.data.edit_bones[hip_bone_name_fallback].parent = armature.data.edit_bones[name_prefix_fallback + root_bone_name]
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    fixBones(remove_prefix=remove_prefix, name_prefix=name_prefix)
+    fixBones()
+    if remove_prefix:
+        renameBones(name_prefix=name_prefix, name_prefix_fallback=name_prefix_fallback)
     scaleAll()
-    copyHips(root_bone_name=root_bone_name, hip_bone_name=hip_bone_name, name_prefix=name_prefix)
+    copyHips(remove_prefix=remove_prefix, root_bone_name=root_bone_name, hip_bone_name=hip_bone_name, hip_bone_name_fallback=hip_bone_name_fallback, name_prefix=name_prefix, name_prefix_fallback=name_prefix_fallback)
 
-def add_root_bone_nla(root_bone_name="Root", hip_bone_name="mixamorig:Hips", name_prefix="mixamorig:"):#remove_prefix=False, name_prefix="mixamorig:"):
+def add_root_bone_nla(root_bone_name, hip_bone_name, hip_bone_name_fallback, name_prefix, name_prefix_fallback):#remove_prefix=False, name_prefix="mixamorig:"):
     armature = bpy.context.selected_objects[0]
     bpy.ops.object.mode_set(mode='EDIT')
 
     # Add root bone to edit bones
-    root_bone = armature.data.edit_bones.new(name_prefix + root_bone_name)
+    if hip_bone_name in bpy.context.object.pose.bones:
+        root_bone = armature.data.edit_bones.new(name_prefix + root_bone_name)
+    else:
+        root_bone = armature.data.edit_bones.new(name_prefix_fallback + root_bone_name)
     root_bone.tail.z = .25
 
-    armature.data.edit_bones[hip_bone_name].parent = armature.data.edit_bones[name_prefix + root_bone_name]
+    if hip_bone_name in armature.data.edit_bones:
+        armature.data.edit_bones[hip_bone_name].parent = armature.data.edit_bones[name_prefix + root_bone_name]
+    else:
+        armature.data.edit_bones[hip_bone_name_fallback].parent = armature.data.edit_bones[name_prefix_fallback + root_bone_name]
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # fix_bones_nla(remove_prefix=remove_prefix, name_prefix=name_prefix)
     # scale_all_nla()
-    copy_hips_nla(root_bone_name=root_bone_name, hip_bone_name=hip_bone_name, name_prefix=name_prefix)
+    copy_hips_nla(root_bone_name=root_bone_name, hip_bone_name=hip_bone_name, name_prefix=name_prefix, hip_bone_name_fallback=hip_bone_name_fallback, name_prefix_fallback=name_prefix_fallback)
 
 def push(obj, action, track_name=None, start_frame=0):
     # Simulate push :
     # * add a track
     # * add an action on track
     # * lock & mute the track
-    # * remove active action from object
+    # * remve active action from object
     tracks = obj.animation_data.nla_tracks
     new_track = tracks.new(prev=None)
     if track_name:
@@ -351,10 +408,11 @@ def push(obj, action, track_name=None, start_frame=0):
     strip = new_track.strips.new(action.name, start_frame, action)
     obj.animation_data.action = None
 
-def get_all_anims(source_dir, root_bone_name="Root", hip_bone_name="mixamorig:Hips", remove_prefix=False, name_prefix="mixamorig:",  insert_root=False, delete_armatures=False):
+def get_all_anims(source_dir, root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback, insert_root=False, delete_armatures=False):
     files = os.listdir(source_dir)
     num_files = len(files)
     current_context = bpy.context.area.ui_type
+    starting_context = bpy.context.copy()
     old_objs = set(bpy.context.scene.objects)
     
     for file in files:
@@ -362,7 +420,7 @@ def get_all_anims(source_dir, root_bone_name="Root", hip_bone_name="mixamorig:Hi
         if not file.endswith('.DS_Store') and file.endswith('.fbx'):
             try:
                 filepath = source_dir+"/"+file
-                import_armature(filepath, root_bone_name, hip_bone_name, remove_prefix, name_prefix, insert_root, delete_armatures)
+                import_armature(filepath, root_bone_name, hip_bone_name, hip_bone_name_fallback, remove_prefix, name_prefix, name_prefix_fallback, insert_root, delete_armatures)
                 imported_objects = set(bpy.context.scene.objects) - old_objs
                 if delete_armatures and num_files > 1:
                     deleteArmature(imported_objects)
@@ -370,7 +428,7 @@ def get_all_anims(source_dir, root_bone_name="Root", hip_bone_name="mixamorig:Hi
 
 
             except Exception as e:
-                log.error("[Mixamo Root] ERROR get_all_anims raised %s when processing %s" % (str(e), file))
+                log.error("[Mixamo Root] ERROR when processing %s, get_all_anims raised %s" % (file, traceback.format_exc()))
                 return -1
     bpy.context.area.ui_type = current_context
     bpy.context.scene.frame_start = 0
@@ -404,6 +462,8 @@ def apply_all_anims(delete_applied_armatures=False, control_rig=None, push_nla=F
 
 
 if __name__ == "__main__":
-    dir_path = "" # If using script in place please set this before running.
-    get_all_anims(dir_path)
+    dir_path = "C:\\Users\\bobbl\\OneDrive\\Documents\\MASQUE\\artifacts\\models\\anims\\human\\run"
+    get_all_anims(dir_path, "Root", "mixamorig6:Hips", "mixamorig:Hips", True, "mixamorig6:", "mixamorig:", True, True)
     print("[Mixamo Root] Run as plugin, or copy script in text editor while setting parameter defaults.")
+    print()
+    print()

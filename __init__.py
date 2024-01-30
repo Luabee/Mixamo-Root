@@ -23,8 +23,8 @@
 
 bl_info = {
     "name": "Mixamo Root",
-    "author": "Richard Perry, Johngoss725",
-    "version": (1, 2, 2),
+    "author": "Richard Perry, Johngoss725, Rynn",
+    "version": (1, 3, 0),
     "blender": (2, 80, 0),
     "location": "3D View > UI (Right Panel) > Mixamo Tab",
     "description": ("Script to bake insert root motion bone for Mixamo Animations"),
@@ -125,6 +125,8 @@ class OBJECT_OT_ImportAnimations(bpy.types.Operator):
             bpy.path.abspath(source_directory),
             root_bone_name=root_name,
             hip_bone_name=hip_name,
+            hip_bone_name_fallback="mixamorig:Hips",
+            name_prefix_fallback="mixamorig:",
             remove_prefix=remove_prefix, name_prefix=name_prefix, insert_root=insert_root, delete_armatures=delete_armatures)
         return{ 'FINISHED'}
 
