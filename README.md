@@ -3,8 +3,7 @@ The majority of the functionality was implemented by Johngoss725's original cont
 which were published under a Creative Commons 1.0 Universal License (CC0-1.0) located at:
 <https://github.com/Johngoss725/Mixamo-To-Godot>.
 
-I have simply reworked some of the functions to be less error prone, and to work better inside an addon.
-
+I (Rynn) have reworked the script to have a fallback bone name since inconsistent bone naming schemes from mixamo downloads were causing me problems.
 
 This is a Blender 2.8+ script for importing Mixamo Models and adding root bones to it.
 This has only been tested with importing fbx files and exporting to a collection for Godot 4.
@@ -23,7 +22,7 @@ A future feature may be added to allow the addon to do this automatically, howev
 
 # How to use:
 Install and enable the addon by downloading this repo as a zip file and directly importing it from the preferences menu.
-Once activate a 'Mixamo Root' panel should be visible in the Mixamo tab. Specify the folder with your Mixamo animations and import them into the file by pressing 'Import Animations'
+Once activate a 'Mixamo Root' panel should be visible in the Mixamo tab (N key to show). Specify the folder with your Mixamo animations and import them into the file by pressing 'Import Animations'
 
 The file can also be run as a script under the blender scripting console, as long as you replace the path parameter in the main function with your animation library path.
 
